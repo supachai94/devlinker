@@ -1,4 +1,4 @@
-"""Discord slash-command adapter for DevLinker."""
+"""Discord adapter for slash commands and plain channel messages."""
 
 from __future__ import annotations
 
@@ -38,12 +38,49 @@ class DiscordProgressReporter(BaseProgressReporter):
             logger.exception("Failed to update Discord progress message.")
 
 
+class DiscordMessageProgressReporter(BaseProgressReporter):
+    """Reply to a source message, then edit that reply with progress updates."""
+
+    def __init__(self, message: discord.Message, throttle_seconds: float) -> None:
+        self._message = message
+        self._throttle_seconds = throttle_seconds
+        self._last_update_at = 0.0
+        self._last_message = ""
+        self._reply: Optional[discord.Message] = None
+
+    @property
+    def reply_message(self) -> Optional[discord.Message]:
+        return self._reply
+
+    async def update(self, stage: str, message: str) -> None:
+        del stage
+        now = monotonic()
+        if message == self._last_message and now - self._last_update_at < self._throttle_seconds:
+            return
+
+        self._last_message = message
+        self._last_update_at = now
+        try:
+            if self._reply is None:
+                self._reply = await self._message.reply(
+                    f"⏳ {message}",
+                    mention_author=False,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+                return
+            await self._reply.edit(content=f"⏳ {message}")
+        except discord.HTTPException:
+            logger.exception("Failed to update Discord message progress reply.")
+
+
 class DevLinkerDiscordClient(discord.Client):
     """Concrete Discord client that registers slash commands during setup."""
 
     def __init__(self, adapter: "DiscordAdapter") -> None:
         intents = discord.Intents.none()
         intents.guilds = True
+        intents.messages = adapter.plain_messages_enabled
+        intents.message_content = adapter.plain_messages_enabled
         super().__init__(intents=intents)
         self.adapter = adapter
         self.tree = app_commands.CommandTree(self)
@@ -75,9 +112,12 @@ class DevLinkerDiscordClient(discord.Client):
                 "DISCORD_GUILD_ID was not found. Copy the Server ID again from Discord Developer Mode."
             ) from exc
 
+    async def on_message(self, message: discord.Message) -> None:
+        await self.adapter.handle_message(message)
+
 
 class DiscordAdapter(BaseChannelAdapter):
-    """Receive slash commands from Discord and send formatted responses back."""
+    """Receive slash commands and plain messages from Discord and send formatted responses back."""
 
     name = "discord"
 
@@ -100,11 +140,24 @@ class DiscordAdapter(BaseChannelAdapter):
             return None
         return discord.Object(id=self._settings.guild_id)
 
+    @property
+    def plain_messages_enabled(self) -> bool:
+        return self._settings.enable_plain_messages
+
     async def start(self) -> None:
         if not self._settings.token:
             raise ValueError("DISCORD_TOKEN is required to start the Discord adapter.")
         try:
             await self._client.start(self._settings.token)
+        except discord.PrivilegedIntentsRequired as exc:
+            if self.plain_messages_enabled:
+                raise RuntimeError(
+                    "Plain message mode is enabled, but Discord Message Content Intent is not "
+                    "enabled in the Developer Portal. Enable 'Message Content Intent' in "
+                    "Bot settings, or set DISCORD_ENABLE_PLAIN_MESSAGES=false to use slash "
+                    "commands only."
+                ) from exc
+            raise
         except Exception:
             await self._client.close()
             raise
@@ -210,6 +263,47 @@ class DiscordAdapter(BaseChannelAdapter):
             payload = self._formatter.format_error(exc, request.request_id)
         await self._send_messages(interaction, payload.messages)
 
+    async def handle_message(self, message: discord.Message) -> None:
+        if not self.plain_messages_enabled:
+            return
+
+        if not self._should_process_message(message):
+            return
+
+        prompt = self._normalize_message_prompt(
+            message.content,
+            self._client.user.id if self._client.user is not None else None,
+        )
+        if not prompt:
+            return
+
+        request = AgentPromptRequest(
+            prompt=prompt,
+            source_channel="discord",
+            user_id=message.author.id,
+            username=str(message.author),
+            role_ids=self._extract_role_ids_from_message(message),
+            agent=self._default_agent,
+            auto_approve=False,
+            dry_run=False,
+            metadata={
+                "guild_id": str(message.guild.id if message.guild else ""),
+                "channel_id": str(message.channel.id),
+                "message_id": str(message.id),
+            },
+        )
+
+        reporter = DiscordMessageProgressReporter(
+            message,
+            throttle_seconds=self._settings.progress_update_interval_seconds,
+        )
+        try:
+            result = await self._service.handle_forge(request, reporter)
+            payload = self._formatter.format_result(result)
+        except Exception as exc:  # noqa: BLE001
+            payload = self._formatter.format_error(exc, request.request_id)
+        await self._send_message_replies(message, payload.messages, reporter.reply_message)
+
     async def _send_messages(self, interaction: discord.Interaction, messages: list[str]) -> None:
         if not messages:
             messages = ["No response generated."]
@@ -219,8 +313,65 @@ class DiscordAdapter(BaseChannelAdapter):
         for chunk in rest:
             await interaction.followup.send(chunk)
 
+    async def _send_message_replies(
+        self,
+        source_message: discord.Message,
+        messages: list[str],
+        progress_reply: Optional[discord.Message],
+    ) -> None:
+        if not messages:
+            messages = ["No response generated."]
+
+        first, *rest = messages
+        if progress_reply is not None:
+            await progress_reply.edit(content=first)
+        else:
+            await source_message.reply(
+                first,
+                mention_author=False,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+
+        for chunk in rest:
+            await source_message.reply(
+                chunk,
+                mention_author=False,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+
+    @staticmethod
+    def _normalize_message_prompt(raw_content: str, bot_user_id: Optional[int]) -> str:
+        prompt = raw_content.strip()
+        if not prompt:
+            return ""
+
+        if bot_user_id is None:
+            return prompt
+
+        for mention in (f"<@{bot_user_id}>", f"<@!{bot_user_id}>"):
+            if prompt.startswith(mention):
+                prompt = prompt[len(mention) :].strip()
+
+        return prompt
+
+    @staticmethod
+    def _should_process_message(message: discord.Message) -> bool:
+        if message.author.bot:
+            return False
+        if message.guild is None:
+            return False
+        if not message.content.strip():
+            return False
+        return True
+
     @staticmethod
     def _extract_role_ids(interaction: discord.Interaction) -> list[int]:
         if isinstance(interaction.user, discord.Member):
             return [role.id for role in interaction.user.roles]
+        return []
+
+    @staticmethod
+    def _extract_role_ids_from_message(message: discord.Message) -> list[int]:
+        if isinstance(message.author, discord.Member):
+            return [role.id for role in message.author.roles]
         return []

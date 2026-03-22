@@ -135,6 +135,7 @@ cp config.example.yaml config.yaml
 
 - `DISCORD_TOKEN`
 - `DISCORD_WEBHOOK_URL`
+- `DISCORD_ENABLE_PLAIN_MESSAGES` if you want the bot to read normal channel messages directly. ถ้าต้องการให้บอทอ่านข้อความปกติใน channel ได้ ให้ตั้ง `DISCORD_ENABLE_PLAIN_MESSAGES`
 - `DISCORD_ALLOWED_USER_IDS` or `DISCORD_ALLOWED_ROLE_IDS`
 - `DEFAULT_AGENT`
 - `WORKING_DIR`
@@ -145,6 +146,7 @@ cp config.example.yaml config.yaml
 ```dotenv
 DISCORD_TOKEN=your_token
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+DISCORD_ENABLE_PLAIN_MESSAGES=false
 DISCORD_ALLOWED_USER_IDS=123456789012345678
 DEFAULT_AGENT=codex
 WORKING_DIR=./workspace
@@ -158,6 +160,8 @@ Start the Discord bot / รัน Discord bot:
 ```bash
 python -m devlinker bot
 ```
+
+If `DISCORD_ENABLE_PLAIN_MESSAGES=true`, you must also enable `Message Content Intent` in the Discord Developer Portal under `Bot` settings. ถ้าตั้ง `DISCORD_ENABLE_PLAIN_MESSAGES=true` ต้องเปิด `Message Content Intent` ใน Discord Developer Portal ที่หน้า `Bot` ด้วย
 
 Run a one-off local job / รันทดสอบแบบ local:
 

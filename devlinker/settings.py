@@ -51,6 +51,7 @@ class DiscordSettings(BaseModel):
     token: str = ""
     webhook_url: str = ""
     guild_id: Optional[int] = None
+    enable_plain_messages: bool = False
     allowed_user_ids: List[int] = Field(default_factory=list)
     allowed_role_ids: List[int] = Field(default_factory=list)
     allow_all_if_unconfigured: bool = False
@@ -163,6 +164,10 @@ def _load_env_overrides() -> Dict[str, Any]:
         env.setdefault("discord", {})["webhook_url"] = os.environ["DISCORD_WEBHOOK_URL"]
     if os.getenv("DISCORD_GUILD_ID"):
         env.setdefault("discord", {})["guild_id"] = int(os.environ["DISCORD_GUILD_ID"])
+    if os.getenv("DISCORD_ENABLE_PLAIN_MESSAGES"):
+        env.setdefault("discord", {})["enable_plain_messages"] = (
+            os.environ["DISCORD_ENABLE_PLAIN_MESSAGES"].lower() == "true"
+        )
     if os.getenv("DISCORD_ALLOWED_USER_IDS"):
         env.setdefault("discord", {})["allowed_user_ids"] = _parse_csv_integers(
             os.environ["DISCORD_ALLOWED_USER_IDS"]
