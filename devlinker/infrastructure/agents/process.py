@@ -54,25 +54,25 @@ class AsyncSubprocessRunner:
             callback: Optional[LineCallback],
         ) -> None:
             nonlocal callback_error
+            buffer = b""
 
             while True:
-                payload = await stream.readline()
+                payload = await stream.read(4096)
                 if not payload:
                     break
 
-                text = payload.decode("utf-8", errors="replace").rstrip("\n")
-                sink.append(text)
+                buffer += payload
+                while True:
+                    newline_index = buffer.find(b"\n")
+                    if newline_index < 0:
+                        break
+                    line = buffer[:newline_index]
+                    buffer = buffer[newline_index + 1 :]
+                    if await self._handle_stream_line(line, sink, callback, process):
+                        return
 
-                if callback is None:
-                    continue
-
-                try:
-                    await callback(text)
-                except BaseException as exc:  # noqa: BLE001
-                    callback_error = exc
-                    if process.returncode is None:
-                        process.terminate()
-                    break
+            if buffer:
+                await self._handle_stream_line(buffer, sink, callback, process)
 
         stdout_task = asyncio.create_task(consume(process.stdout, stdout_lines, stdout_callback))
         stderr_task = asyncio.create_task(consume(process.stderr, stderr_lines, stderr_callback))
@@ -104,6 +104,28 @@ class AsyncSubprocessRunner:
             stdout="\n".join(stdout_lines).strip(),
             stderr="\n".join(stderr_lines).strip(),
         )
+
+    async def _handle_stream_line(
+        self,
+        payload: bytes,
+        sink: list[str],
+        callback: Optional[LineCallback],
+        process: asyncio.subprocess.Process,
+    ) -> bool:
+        text = payload.decode("utf-8", errors="replace").rstrip("\n")
+        sink.append(text)
+
+        if callback is None:
+            return False
+
+        try:
+            await callback(text)
+        except BaseException:  # noqa: BLE001
+            if process.returncode is None:
+                process.terminate()
+            raise
+
+        return False
 
     @staticmethod
     def _build_env(extra_env: Optional[Dict[str, str]]) -> Dict[str, str]:

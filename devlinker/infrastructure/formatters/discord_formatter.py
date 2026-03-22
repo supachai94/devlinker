@@ -13,6 +13,8 @@ from devlinker.settings import FormattingSettings
 class DiscordFormatter(BaseResponseFormatter):
     """Format agent output into Discord-sized messages."""
 
+    _compact_prompt_limits = (280, 120, 0)
+
     def __init__(self, settings: FormattingSettings) -> None:
         self._settings = settings
 
@@ -57,6 +59,10 @@ class DiscordFormatter(BaseResponseFormatter):
             joined_logs = "\n".join(result.logs[:10])
             sections.append(f"**Agent logs**\n```text\n{joined_logs[:self._settings.max_logs_chars]}\n```")
 
+        compact_message = self._compact_result(result, sections[0])
+        if compact_message is not None:
+            return FormattedMessage(channel="discord", messages=[compact_message])
+
         return FormattedMessage(channel="discord", messages=self._split_sections(sections))
 
     def format_error(self, error: Exception, request_id: str) -> FormattedMessage:
@@ -83,6 +89,56 @@ class DiscordFormatter(BaseResponseFormatter):
                 )
             )
         return sections
+
+    def _compact_result(self, result: AgentResult, header: str) -> str | None:
+        if result.status != ExecutionStatus.SUCCESS:
+            return None
+
+        change_summary = ""
+        if result.changes:
+            change_summary = "\n".join(
+                [
+                    "**Detected changes**",
+                    f"{len(result.changes)} file(s) changed. Diff omitted to keep a single Discord message.",
+                ]
+            )
+
+        approval_section = ""
+        if result.approval_required and result.approval_request_id:
+            approval_section = "\n".join(
+                [
+                    "🟡 **Approval required**",
+                    "การเปลี่ยนแปลงถูกสร้างใน preview workspace แล้ว แต่ยังไม่ได้ apply กับ live workspace",
+                    f"ใช้ `/approve request_id:{result.approval_request_id}` เพื่อ apply จริง",
+                    f"หรือ `/reject request_id:{result.approval_request_id}` เพื่อยกเลิก",
+                ]
+            )
+
+        for prompt_limit in self._compact_prompt_limits:
+            sections = [header]
+            if result.original_prompt.strip() and prompt_limit > 0:
+                prompt_text = self._truncate_text(result.original_prompt.strip(), prompt_limit)
+                sections.append(f"**Prompt**\n{prompt_text}")
+
+            if approval_section:
+                sections.append(approval_section)
+
+            if change_summary:
+                sections.append(change_summary)
+
+            if result.final_answer.strip():
+                base = "\n\n".join(sections + ["**Final answer**"])
+                available = self._settings.max_message_length - len(base) - 2
+                if available <= 0:
+                    continue
+                answer_text = self._truncate_text(result.final_answer.strip(), available)
+                sections.append(f"**Final answer**\n{answer_text}")
+
+            message = "\n\n".join(sections)
+            if len(message) <= self._settings.max_message_length:
+                return message
+
+        return None
 
     def _split_sections(self, sections: list[str]) -> list[str]:
         chunks: list[str] = []
@@ -129,6 +185,26 @@ class DiscordFormatter(BaseResponseFormatter):
             parts.append(remaining[:split_at].rstrip())
             remaining = remaining[split_at:].lstrip()
         return parts
+
+    def _truncate_text(self, text: str, limit: int) -> str:
+        ellipsis = "..."
+        suffix = "\n\n_(truncated to fit one Discord message)_"
+        if len(text) <= limit:
+            return text
+
+        if limit <= len(suffix) + 8:
+            if limit <= len(ellipsis):
+                return ellipsis[:limit]
+            return f"{text[: limit - len(ellipsis)].rstrip()}{ellipsis}"
+
+        trimmed = text[: limit - len(suffix)].rstrip()
+        if trimmed.count("```") % 2 == 1:
+            fence = "\n```"
+            max_trimmed = limit - len(suffix) - len(fence)
+            trimmed = trimmed[:max_trimmed].rstrip()
+            trimmed = f"{trimmed}{fence}"
+
+        return f"{trimmed}{suffix}"
 
     @staticmethod
     def _status_icon(status: ExecutionStatus) -> str:
