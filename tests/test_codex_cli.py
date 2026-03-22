@@ -59,3 +59,15 @@ def test_build_command_includes_expected_codex_flags(tmp_path: Path) -> None:
     assert "--ephemeral" in command
     assert "--search" in command
     assert "workspace-write" in command
+
+
+def test_extract_final_answer_prefers_last_agent_message() -> None:
+    stdout = "\n".join(
+        [
+            '{"type":"thread.started","thread_id":"abc"}',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"progress"}}',
+            '{"type":"item.completed","item":{"type":"agent_message","text":"final answer"}}',
+        ]
+    )
+
+    assert CodexCLIAdapter._extract_final_answer(stdout) == "final answer"

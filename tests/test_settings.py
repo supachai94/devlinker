@@ -21,9 +21,11 @@ agents:
     )
 
     monkeypatch.setenv("DISCORD_TOKEN", "from-env")
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://example.com/webhook")
     monkeypatch.setenv("WORKING_DIR", str(tmp_path / "workspace-env"))
 
     settings = load_settings(config_path=str(config_path), env_file=str(tmp_path / ".env"))
 
     assert settings.discord.token == "from-env"
+    assert settings.discord.webhook_url == "https://example.com/webhook"
     assert settings.agents.working_dir == Path(tmp_path / "workspace-env")

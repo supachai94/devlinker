@@ -134,6 +134,7 @@ cp config.example.yaml config.yaml
 ## Required Configuration / ค่าที่ควรตั้งอย่างน้อย
 
 - `DISCORD_TOKEN`
+- `DISCORD_WEBHOOK_URL`
 - `DISCORD_ALLOWED_USER_IDS` or `DISCORD_ALLOWED_ROLE_IDS`
 - `DEFAULT_AGENT`
 - `WORKING_DIR`
@@ -143,6 +144,7 @@ cp config.example.yaml config.yaml
 
 ```dotenv
 DISCORD_TOKEN=your_token
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 DISCORD_ALLOWED_USER_IDS=123456789012345678
 DEFAULT_AGENT=codex
 WORKING_DIR=./workspace
@@ -161,6 +163,18 @@ Run a one-off local job / รันทดสอบแบบ local:
 
 ```bash
 python -m devlinker run-once --prompt "Refactor the todo service" --dry-run
+```
+
+Run a one-off local job and send the result to Discord webhook / รันทดสอบแล้วส่งผลไป Discord webhook:
+
+```bash
+python -m devlinker run-once --prompt "Summarize this repository" --dry-run --send-webhook
+```
+
+Send a direct webhook test message / ส่งข้อความทดสอบไป webhook โดยตรง:
+
+```bash
+python -m devlinker webhook-test --message "DevLinker webhook is working."
 ```
 
 Run tests / รันเทสต์:

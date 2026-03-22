@@ -51,12 +51,29 @@ class DevLinkerDiscordClient(discord.Client):
     async def setup_hook(self) -> None:
         self.adapter.register_commands(self.tree)
         guild_object = self.adapter.guild_object
-        if guild_object is not None:
-            await self.tree.sync(guild=guild_object)
-            logger.info("Synced Discord slash commands to guild {}", guild_object.id)
-            return
-        await self.tree.sync()
-        logger.info("Synced Discord slash commands globally.")
+        try:
+            if guild_object is not None:
+                await self.tree.sync(guild=guild_object)
+                logger.info("Synced Discord slash commands to guild {}", guild_object.id)
+                return
+            await self.tree.sync()
+            logger.info("Synced Discord slash commands globally.")
+        except discord.Forbidden as exc:
+            if guild_object is None:
+                raise RuntimeError(
+                    "Discord denied application command sync. Check the bot invite and token."
+                ) from exc
+            raise RuntimeError(
+                "Discord denied access while syncing guild commands. "
+                "Check that DISCORD_GUILD_ID matches a server where the bot is invited, "
+                "and that the invite used both 'bot' and 'applications.commands' scopes."
+            ) from exc
+        except discord.NotFound as exc:
+            if guild_object is None:
+                raise
+            raise RuntimeError(
+                "DISCORD_GUILD_ID was not found. Copy the Server ID again from Discord Developer Mode."
+            ) from exc
 
 
 class DiscordAdapter(BaseChannelAdapter):
@@ -86,7 +103,11 @@ class DiscordAdapter(BaseChannelAdapter):
     async def start(self) -> None:
         if not self._settings.token:
             raise ValueError("DISCORD_TOKEN is required to start the Discord adapter.")
-        await self._client.start(self._settings.token)
+        try:
+            await self._client.start(self._settings.token)
+        except Exception:
+            await self._client.close()
+            raise
 
     def register_commands(self, tree: app_commands.CommandTree) -> None:
         guild = self.guild_object

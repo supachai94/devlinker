@@ -37,3 +37,27 @@ def test_formatter_splits_large_messages() -> None:
 
     assert len(payload.messages) > 1
     assert all(len(message) <= 250 for message in payload.messages)
+
+
+def test_formatter_hides_logs_and_stderr_on_success() -> None:
+    formatter = DiscordFormatter(FormattingSettings())
+    result = AgentResult(
+        request_id="req-2",
+        agent="codex",
+        status=ExecutionStatus.SUCCESS,
+        summary="done",
+        final_answer="clean answer",
+        stdout="",
+        stderr="warning text",
+        logs=["internal log"],
+        exit_code=0,
+        duration_seconds=0.8,
+        working_dir=Path("."),
+    )
+
+    payload = formatter.format_result(result)
+    joined = "\n".join(payload.messages)
+
+    assert "clean answer" in joined
+    assert "**stderr**" not in joined
+    assert "**Agent logs**" not in joined

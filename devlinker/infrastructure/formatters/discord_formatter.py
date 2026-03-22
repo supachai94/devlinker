@@ -48,10 +48,10 @@ class DiscordFormatter(BaseResponseFormatter):
         if result.changes:
             sections.extend(self._format_changes(result.changes))
 
-        if result.stderr.strip():
+        if result.status != ExecutionStatus.SUCCESS and result.stderr.strip():
             sections.append(f"**stderr**\n```text\n{result.stderr[:self._settings.max_logs_chars]}\n```")
 
-        if result.logs:
+        if result.status != ExecutionStatus.SUCCESS and result.logs:
             joined_logs = "\n".join(result.logs[:10])
             sections.append(f"**Agent logs**\n```text\n{joined_logs[:self._settings.max_logs_chars]}\n```")
 

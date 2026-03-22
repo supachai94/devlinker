@@ -42,8 +42,14 @@ class CodexCLIAdapter(BaseAgentAdapter):
         reporter: Optional[BaseProgressReporter] = None,
     ) -> AgentResult:
         start = perf_counter()
-        before_snapshot = self._workspace_manager.snapshot(execution.working_dir)
-        output_file = self._settings.agents.state_dir / f"{request.request_id}-last-message.txt"
+        before_snapshot = (
+            self._workspace_manager.snapshot(execution.working_dir)
+            if execution.write_enabled
+            else None
+        )
+        output_file = (
+            self._settings.agents.state_dir.resolve() / f"{request.request_id}-last-message.txt"
+        )
         output_file.parent.mkdir(parents=True, exist_ok=True)
         if output_file.exists():
             output_file.unlink()
@@ -68,9 +74,13 @@ class CodexCLIAdapter(BaseAgentAdapter):
             stdout_callback=on_stdout,
         )
 
-        after_snapshot = self._workspace_manager.snapshot(execution.working_dir)
-        changes = self._workspace_manager.diff_snapshots(before_snapshot, after_snapshot)
-        final_answer = self._read_output_file(output_file, fallback=result.stdout)
+        if execution.write_enabled and before_snapshot is not None:
+            after_snapshot = self._workspace_manager.snapshot(execution.working_dir)
+            changes = self._workspace_manager.diff_snapshots(before_snapshot, after_snapshot)
+        else:
+            changes = []
+        parsed_final_answer = self._extract_final_answer(result.stdout)
+        final_answer = self._read_output_file(output_file, fallback=parsed_final_answer or result.stdout)
         logs = self._collect_json_logs(result.stdout)
         summary = self._build_summary(final_answer, changes, execution.preview_only)
 
@@ -142,6 +152,32 @@ class CodexCLIAdapter(BaseAgentAdapter):
             if content:
                 return content
         return fallback.strip()
+
+    @staticmethod
+    def _extract_final_answer(stdout: str) -> str:
+        last_agent_message = ""
+
+        for line in stdout.splitlines():
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            if payload.get("type") != "item.completed":
+                continue
+
+            item = payload.get("item", {})
+            if not isinstance(item, dict):
+                continue
+
+            if item.get("type") != "agent_message":
+                continue
+
+            message = item.get("text")
+            if isinstance(message, str) and message.strip():
+                last_agent_message = message.strip()
+
+        return last_agent_message
 
     @staticmethod
     def _collect_json_logs(stdout: str) -> list[str]:

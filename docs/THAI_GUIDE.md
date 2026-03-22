@@ -53,6 +53,7 @@ cp config.example.yaml config.yaml
 
 ```dotenv
 DISCORD_TOKEN=your_token
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 DISCORD_ALLOWED_USER_IDS=123456789012345678
 DEFAULT_AGENT=codex
 WORKING_DIR=./workspace
@@ -77,6 +78,18 @@ python -m devlinker bot
 
 ```bash
 python -m devlinker run-once --prompt "สร้าง FastAPI CRUD สำหรับ todo list" --dry-run
+```
+
+รันทดสอบแล้วส่งผลไป Discord webhook:
+
+```bash
+python -m devlinker run-once --prompt "สรุปโครงสร้างโปรเจ็กต์นี้" --dry-run --send-webhook
+```
+
+ส่งข้อความทดสอบไป webhook โดยตรง:
+
+```bash
+python -m devlinker webhook-test --message "DevLinker webhook พร้อมใช้งาน"
 ```
 
 รันเทสต์:

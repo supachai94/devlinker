@@ -49,6 +49,7 @@ class DiscordSettings(BaseModel):
     """Discord-specific runtime settings."""
 
     token: str = ""
+    webhook_url: str = ""
     guild_id: Optional[int] = None
     allowed_user_ids: List[int] = Field(default_factory=list)
     allowed_role_ids: List[int] = Field(default_factory=list)
@@ -158,6 +159,8 @@ def _load_env_overrides() -> Dict[str, Any]:
 
     if os.getenv("DISCORD_TOKEN"):
         env.setdefault("discord", {})["token"] = os.environ["DISCORD_TOKEN"]
+    if os.getenv("DISCORD_WEBHOOK_URL"):
+        env.setdefault("discord", {})["webhook_url"] = os.environ["DISCORD_WEBHOOK_URL"]
     if os.getenv("DISCORD_GUILD_ID"):
         env.setdefault("discord", {})["guild_id"] = int(os.environ["DISCORD_GUILD_ID"])
     if os.getenv("DISCORD_ALLOWED_USER_IDS"):
