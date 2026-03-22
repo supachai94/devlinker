@@ -16,6 +16,7 @@ def test_formatter_splits_large_messages() -> None:
         request_id="req-1",
         agent="codex",
         status=ExecutionStatus.SUCCESS,
+        original_prompt="large prompt",
         summary="done",
         final_answer="A" * 500,
         stdout="",
@@ -39,17 +40,18 @@ def test_formatter_splits_large_messages() -> None:
     assert all(len(message) <= 250 for message in payload.messages)
 
 
-def test_formatter_hides_logs_and_stderr_on_success() -> None:
+def test_formatter_includes_original_prompt() -> None:
     formatter = DiscordFormatter(FormattingSettings())
     result = AgentResult(
         request_id="req-2",
         agent="codex",
         status=ExecutionStatus.SUCCESS,
+        original_prompt="ลอง docker ps ดูหน่อย",
         summary="done",
-        final_answer="clean answer",
+        final_answer="มี 20 containers",
         stdout="",
-        stderr="warning text",
-        logs=["internal log"],
+        stderr="",
+        logs=[],
         exit_code=0,
         duration_seconds=0.8,
         working_dir=Path("."),
@@ -58,6 +60,7 @@ def test_formatter_hides_logs_and_stderr_on_success() -> None:
     payload = formatter.format_result(result)
     joined = "\n".join(payload.messages)
 
-    assert "clean answer" in joined
-    assert "**stderr**" not in joined
-    assert "**Agent logs**" not in joined
+    assert "**Prompt**" in joined
+    assert "ลอง docker ps ดูหน่อย" in joined
+    assert "มี 20 containers" in joined
+    assert "Request ID:" not in joined

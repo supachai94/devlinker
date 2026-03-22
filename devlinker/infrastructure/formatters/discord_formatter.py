@@ -23,12 +23,14 @@ class DiscordFormatter(BaseResponseFormatter):
             "\n".join(
                 [
                     f"{icon} **DevLinker / {result.agent}**",
-                    f"Request ID: `{result.request_id}`",
                     f"Summary: {result.summary}",
                     f"Duration: `{result.duration_seconds:.2f}s` | Exit code: `{result.exit_code}`",
                 ]
             )
         )
+
+        if result.original_prompt.strip():
+            sections.append(f"**Prompt**\n{result.original_prompt.strip()}")
 
         if result.approval_required and result.approval_request_id:
             sections.append(
@@ -48,20 +50,20 @@ class DiscordFormatter(BaseResponseFormatter):
         if result.changes:
             sections.extend(self._format_changes(result.changes))
 
-        if result.status != ExecutionStatus.SUCCESS and result.stderr.strip():
+        if result.stderr.strip() and result.status != ExecutionStatus.SUCCESS:
             sections.append(f"**stderr**\n```text\n{result.stderr[:self._settings.max_logs_chars]}\n```")
 
-        if result.status != ExecutionStatus.SUCCESS and result.logs:
+        if result.logs and result.status != ExecutionStatus.SUCCESS:
             joined_logs = "\n".join(result.logs[:10])
             sections.append(f"**Agent logs**\n```text\n{joined_logs[:self._settings.max_logs_chars]}\n```")
 
         return FormattedMessage(channel="discord", messages=self._split_sections(sections))
 
     def format_error(self, error: Exception, request_id: str) -> FormattedMessage:
+        del request_id
         message = "\n".join(
             [
                 "🔴 **DevLinker error**",
-                f"Request ID: `{request_id}`",
                 f"{type(error).__name__}: {error}",
             ]
         )

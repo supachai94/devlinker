@@ -212,11 +212,11 @@ class DevLinkerService:
         return request.auto_approve
 
     def _should_use_preview(self, request: AgentPromptRequest) -> bool:
-        if self._settings.agents.approval_mode == ApprovalMode.NEVER:
-            return False
-
         if request.dry_run:
             return True
+
+        if self._settings.agents.approval_mode == ApprovalMode.NEVER:
+            return False
 
         if self._settings.agents.approval_mode == ApprovalMode.MANUAL and not request.auto_approve:
             return True
