@@ -74,6 +74,7 @@ class AgentResult(BaseModel):
     request_id: str
     agent: str
     status: ExecutionStatus
+    original_prompt: str = ""
     summary: str
     final_answer: str
     stdout: str

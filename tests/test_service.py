@@ -112,3 +112,48 @@ async def test_approve_applies_changes_to_live_workspace(tmp_path) -> None:
 
     assert result.applied_changes is True
     assert (working_dir / "result.txt").read_text(encoding="utf-8") == "apply change"
+
+
+@pytest.mark.asyncio
+async def test_never_mode_runs_read_only_without_preview(tmp_path) -> None:
+    working_dir = tmp_path / "workspace"
+    working_dir.mkdir()
+    settings = AppSettings.model_validate(
+        {
+            "discord": {
+                "allow_all_if_unconfigured": True,
+            },
+            "agents": {
+                "working_dir": str(working_dir),
+                "state_dir": str(tmp_path / ".devlinker/state"),
+                "preview_dir": str(tmp_path / ".devlinker/previews"),
+                "approval_mode": "never",
+            },
+        }
+    )
+    settings.prepare_runtime()
+    service = DevLinkerService(
+        settings=settings,
+        agents={"fake": FakeAgentAdapter()},
+        access_control=AccessControlService(settings.discord),
+        rate_limiter=InMemoryRateLimiter(settings.security.rate_limit),
+        workspace_manager=WorkspaceManager(settings),
+        approval_store=FileApprovalStore(settings.agents.state_dir / "pending_approvals.json"),
+    )
+
+    result = await service.handle_forge(
+        request=AgentPromptRequest(
+            prompt="read only request",
+            source_channel="discord",
+            user_id=1,
+            username="tester",
+            role_ids=[],
+            agent="fake",
+            auto_approve=False,
+            dry_run=False,
+        ),
+    )
+
+    assert result.preview_dir is None
+    assert result.approval_required is False
+    assert result.applied_changes is False

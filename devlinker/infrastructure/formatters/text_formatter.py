@@ -12,10 +12,13 @@ class TextFormatter(BaseResponseFormatter):
     def format_result(self, result: AgentResult) -> FormattedMessage:
         lines = [
             f"[{result.status.value}] {result.summary}",
-            f"request_id={result.request_id} agent={result.agent} duration={result.duration_seconds:.2f}s",
-            "",
-            result.final_answer.strip() or "(no final answer)",
+            f"agent={result.agent} duration={result.duration_seconds:.2f}s",
         ]
+
+        if result.original_prompt.strip():
+            lines.extend(["", f"prompt: {result.original_prompt.strip()}"])
+
+        lines.extend(["", result.final_answer.strip() or "(no final answer)"])
 
         if result.changes:
             lines.extend(["", "Detected changes:"])
@@ -25,7 +28,8 @@ class TextFormatter(BaseResponseFormatter):
         return FormattedMessage(channel="text", messages=["\n".join(lines).strip()])
 
     def format_error(self, error: Exception, request_id: str) -> FormattedMessage:
+        del request_id
         return FormattedMessage(
             channel="text",
-            messages=[f"[error] request_id={request_id} {type(error).__name__}: {error}"],
+            messages=[f"[error] {type(error).__name__}: {error}"],
         )

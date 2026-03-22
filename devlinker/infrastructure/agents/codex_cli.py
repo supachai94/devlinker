@@ -42,8 +42,12 @@ class CodexCLIAdapter(BaseAgentAdapter):
         reporter: Optional[BaseProgressReporter] = None,
     ) -> AgentResult:
         start = perf_counter()
-        before_snapshot = self._workspace_manager.snapshot(execution.working_dir)
-        output_file = self._settings.agents.state_dir / f"{request.request_id}-last-message.txt"
+        before_snapshot = None
+        if execution.write_enabled:
+            before_snapshot = self._workspace_manager.snapshot(execution.working_dir)
+        output_file = (
+            self._settings.agents.state_dir / f"{request.request_id}-last-message.txt"
+        ).resolve()
         output_file.parent.mkdir(parents=True, exist_ok=True)
         if output_file.exists():
             output_file.unlink()
@@ -68,8 +72,10 @@ class CodexCLIAdapter(BaseAgentAdapter):
             stdout_callback=on_stdout,
         )
 
-        after_snapshot = self._workspace_manager.snapshot(execution.working_dir)
-        changes = self._workspace_manager.diff_snapshots(before_snapshot, after_snapshot)
+        changes = []
+        if before_snapshot is not None:
+            after_snapshot = self._workspace_manager.snapshot(execution.working_dir)
+            changes = self._workspace_manager.diff_snapshots(before_snapshot, after_snapshot)
         final_answer = self._read_output_file(output_file, fallback=result.stdout)
         logs = self._collect_json_logs(result.stdout)
         summary = self._build_summary(final_answer, changes, execution.preview_only)
@@ -84,6 +90,7 @@ class CodexCLIAdapter(BaseAgentAdapter):
             request_id=request.request_id,
             agent=self.name,
             status=status,
+            original_prompt=request.prompt,
             summary=summary,
             final_answer=final_answer,
             stdout=result.stdout,
@@ -141,7 +148,7 @@ class CodexCLIAdapter(BaseAgentAdapter):
             content = output_file.read_text(encoding="utf-8", errors="replace").strip()
             if content:
                 return content
-        return fallback.strip()
+        return CodexCLIAdapter._extract_final_message(fallback)
 
     @staticmethod
     def _collect_json_logs(stdout: str) -> list[str]:
@@ -177,6 +184,28 @@ class CodexCLIAdapter(BaseAgentAdapter):
             fragments = [CodexCLIAdapter._extract_text(item) for item in payload]
             return " ".join(fragment for fragment in fragments if fragment).strip()
         return ""
+
+    @staticmethod
+    def _extract_final_message(stdout: str) -> str:
+        last_agent_message = ""
+        for line in stdout.splitlines():
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            if payload.get("type") != "item.completed":
+                continue
+
+            item = payload.get("item", {})
+            if not isinstance(item, dict) or item.get("type") != "agent_message":
+                continue
+
+            text = item.get("text")
+            if isinstance(text, str) and text.strip():
+                last_agent_message = text.strip()
+
+        return last_agent_message or stdout.strip()
 
     @staticmethod
     def _build_summary(final_answer: str, changes: list, preview_only: bool) -> str:

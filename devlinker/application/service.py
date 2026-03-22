@@ -216,7 +216,7 @@ class DevLinkerService:
             return True
 
         if self._settings.agents.approval_mode == ApprovalMode.NEVER:
-            return True
+            return False
 
         if self._settings.agents.approval_mode == ApprovalMode.MANUAL and not request.auto_approve:
             return True

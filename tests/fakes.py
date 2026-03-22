@@ -31,6 +31,7 @@ class FakeAgentAdapter(BaseAgentAdapter):
             request_id=request.request_id,
             agent=self.name,
             status=ExecutionStatus.SUCCESS,
+            original_prompt=request.prompt,
             summary="fake completed",
             final_answer="fake answer",
             stdout="",
