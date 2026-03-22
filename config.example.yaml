@@ -1,0 +1,58 @@
+logging:
+  level: INFO
+  json_logs: false
+
+discord:
+  token: ""
+  guild_id:
+  allowed_user_ids:
+    - 123456789012345678
+  allowed_role_ids:
+    - 123456789012345678
+  allow_all_if_unconfigured: false
+  progress_update_interval_seconds: 1.5
+
+formatting:
+  max_message_length: 1900
+  max_diff_files: 5
+  max_diff_chars_per_file: 1400
+  max_logs_chars: 1200
+
+security:
+  rate_limit:
+    max_requests: 5
+    per_seconds: 60
+  blocked_command_patterns:
+    - "\\brm\\s+-rf\\b"
+    - "\\bmkfs\\b"
+    - "\\bdd\\s+if="
+    - "\\bshutdown\\b"
+    - "\\breboot\\b"
+    - "curl\\s+.+\\|\\s*(?:bash|sh)"
+  allowed_command_prefixes: []
+  max_file_bytes_for_diff: 200000
+  ignored_paths:
+    - .git
+    - .venv
+    - __pycache__
+    - .pytest_cache
+    - .mypy_cache
+    - .devlinker
+  approval_requires_same_user: true
+
+agents:
+  default_agent: codex
+  working_dir: ./workspace
+  state_dir: ./.devlinker/state
+  preview_dir: ./.devlinker/previews
+  approval_mode: manual
+  timeout_seconds: 600
+  dry_run: false
+  codex:
+    command: codex
+    model: null
+    write_sandbox: workspace-write
+    read_only_sandbox: read-only
+    extra_args: []
+    ephemeral: true
+    json_output: true

@@ -1,0 +1,1 @@
+"""Response formatter implementations."""
